@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>値札レジゴー</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    // ★ ここにStep 2で取得したGASのURLを貼り付けてください
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxNyIjEaQKlChXL2_MyB2GqHvl5nhcPsDrD0bABJvpoXo_Us1spK2V9X2IbK_yRrxC83Q/exec";
+
+    let cart = [];
+    let videoStream = null;
+
+    // カメラの起動
+    async function startCamera() {
+      const video = document.getElementById('camera');
+      try {
+        videoStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }, // 背面カメラ
+          audio: false
+        });
+        video.srcObject = videoStream;
+        document.getElementById('start-camera-btn').classList.add('hidden');
+        document.getElementById('capture-btn').classList.remove('hidden');
+      } catch (err) {
+        alert("カメラの起動に失敗しました。ブラウザの権限を確認してください。");
+      }
+    }
+
+    // 撮影とGASへの送信
+    async function captureAndSend() {
+      const video = document.getElementById('camera');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+
+      // 動画のサイズに合わせてCanvasを設定し、描画
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Base64画像を取得
+      const imageSrc = canvas.toDataURL('image/jpeg', 0.8);
+      const base64Data = imageSrc.split(',')[1];
+
+      // UIをローディング状態にする
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('capture-btn').disabled = true;
+
+      try {
+        const response = await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ image: base64Data })
+        });
+        
+        const result = await response.json();
+
+        if (result.success) {
+          showPreview(result.name, result.price, imageSrc);
+        } else {
+          alert("エラー: " + result.error);
+        }
+      } catch (error) {
+        alert("通信エラーが発生しました。");
+      } finally {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('capture-btn').disabled = false;
+      }
+    }
+
+    // プレビュー画面の表示
+    function showPreview(name, price, imageSrc) {
+      document.getElementById('camera-area').classList.add('hidden');
+      document.getElementById('preview-area').classList.remove('hidden');
+      
+      document.getElementById('preview-image').src = imageSrc;
+      document.getElementById('preview-name').innerText = name;
+      document.getElementById('preview-price').value = price;
+    }
+
+    // プレビューのキャンセル（再撮影）
+    function cancelPreview() {
+      document.getElementById('preview-area').classList.add('hidden');
+      document.getElementById('camera-area').classList.remove('hidden');
+    }
+
+    // カートへ追加
+    function addToCart() {
+      const name = document.getElementById('preview-name').innerText;
+      const price = parseInt(document.getElementById('preview-price').value) || 0;
+      const id = Date.now();
+
+      cart.push({ id, name, price });
+      updateCartUI();
+      cancelPreview();
+    }
+
+    // カートから削除
+    function removeFromCart(id) {
+      cart = cart.filter(item => item.id !== id);
+      updateCartUI();
+    }
+
+    // 画面の更新（リストと合計金額）
+    function updateCartUI() {
+      const listEl = document.getElementById('cart-list');
+      const totalEl = document.getElementById('total-price');
+      const countEl = document.getElementById('item-count');
+
+      listEl.innerHTML = '';
+      let total = 0;
+
+      cart.forEach(item => {
+        total += item.price;
+        listEl.innerHTML += `
+          <li class="flex justify-between items-center p-2 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0">
+            <div class="truncate pr-4 flex-1">
+              <p class="text-sm font-bold text-gray-800 truncate">${item.name}</p>
+            </div>
+            <div class="flex items-center gap-4">
+              <p class="font-bold text-lg whitespace-nowrap">¥${item.price.toLocaleString()}</p>
+              <button onclick="removeFromCart(${item.id})" class="text-red-400 hover:text-red-600 p-1">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </li>
+        `;
+      });
+
+      if (cart.length === 0) {
+        listEl.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">まだ商品がありません</p>';
+      }
+
+      totalEl.innerText = `¥${total.toLocaleString()}`;
+      countEl.innerText = `${cart.length} 点`;
+    }
+  </script>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen flex flex-col pb-28">
+
+  <header class="bg-indigo-600 text-white p-4 shadow-md sticky top-0 z-10 flex justify-between items-center">
+    <h1 class="text-xl font-bold"><i class="fa-solid fa-cart-shopping mr-2"></i>値札レジゴー</h1>
+    <div class="bg-indigo-800 px-3 py-1 rounded-full text-sm font-bold" id="item-count">0 点</div>
+  </header>
+
+  <main class="flex-1 p-4 max-w-md mx-auto w-full flex flex-col gap-4">
+    
+    <div id="camera-area" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center border border-gray-200 relative">
+      <h2 class="text-md font-bold mb-2 text-gray-700">値札を撮影してください</h2>
+      
+      <div class="w-full relative rounded-lg overflow-hidden bg-black aspect-[4/3] flex items-center justify-center">
+        <div id="loading" class="absolute inset-0 bg-black/60 z-10 flex flex-col items-center justify-center text-white hidden">
+          <i class="fa-solid fa-spinner fa-spin fa-3x mb-2"></i>
+          <p>AIが解析中...</p>
+        </div>
+        
+        <video id="camera" autoplay playsinline class="w-full h-full object-cover"></video>
+        <canvas id="canvas" class="hidden"></canvas>
+      </div>
+      
+      <button id="start-camera-btn" onclick="startCamera()" class="mt-4 bg-gray-800 text-white px-6 py-3 rounded-full font-bold shadow">
+        カメラを起動する
+      </button>
+
+      <button id="capture-btn" onclick="captureAndSend()" class="mt-4 bg-indigo-600 text-white p-4 rounded-full shadow-lg active:scale-95 transition-transform hidden">
+        <i class="fa-solid fa-camera fa-2x"></i>
+      </button>
+    </div>
+
+    <div id="preview-area" class="bg-white rounded-xl shadow-md p-6 border border-indigo-200 flex flex-col items-center hidden">
+      <h2 class="text-lg font-bold mb-4 text-indigo-700">この内容で追加しますか？</h2>
+      <img id="preview-image" class="w-32 h-auto rounded shadow-sm mb-4 opacity-80" />
+      
+      <div class="w-full bg-gray-50 p-4 rounded-lg mb-6 border">
+        <p class="text-sm text-gray-500 mb-1">商品名候補</p>
+        <p id="preview-name" class="font-bold text-gray-800 mb-3"></p>
+        
+        <p class="text-sm text-gray-500 mb-1">価格</p>
+        <input id="preview-price" type="number" class="w-full text-2xl font-bold text-right border-b-2 border-indigo-500 bg-transparent focus:outline-none" />
+        <p class="text-xs text-gray-400 mt-1">※間違っている場合は直接修正できます</p>
+      </div>
+
+      <div class="flex gap-4 w-full">
+        <button onclick="cancelPreview()" class="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-bold"><i class="fa-solid fa-xmark"></i> 再撮影</button>
+        <button onclick="addToCart()" class="flex-1 py-3 bg-indigo-600 text-white rounded-lg font-bold"><i class="fa-solid fa-plus"></i> カートへ</button>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+      <h2 class="font-bold text-gray-700 mb-3 border-b pb-2">買い物リスト</h2>
+      <ul id="cart-list" class="flex flex-col gap-2">
+        <p class="text-gray-400 text-center py-4 text-sm">まだ商品がありません</p>
+      </ul>
+    </div>
+  </main>
+
+  <div class="fixed bottom-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-4 pb-6">
+    <div class="max-w-md mx-auto flex justify-between items-end">
+      <div>
+        <p class="text-sm text-gray-500 font-bold">合計金額</p>
+        <p id="total-price" class="text-3xl font-black text-gray-900 leading-none mt-1">¥0</p>
+      </div>
+      <button class="bg-gray-800 text-white px-8 py-3 rounded-xl font-bold shadow-md">精算する</button>
+    </div>
+  </div>
+
+  <script>
+    // iOS Safari向け: 自動でカメラ起動ボタンを押させないための処理
+    // ユーザー操作(クリック)がトリガーでないとカメラが起動しないため、初期状態はボタン表示としています
+  </script>
+</body>
+</html>
