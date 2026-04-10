@@ -18,27 +18,46 @@
       const video = document.getElementById('camera');
       try {
         videoStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" }, // 背面カメラ
+          video: { facingMode: "environment" },
           audio: false
         });
         video.srcObject = videoStream;
         document.getElementById('start-camera-btn').classList.add('hidden');
         document.getElementById('capture-btn').classList.remove('hidden');
+        
+        // ★追加：カメラ起動時にガイド枠を表示する
+        document.getElementById('guide-frame').classList.remove('hidden');
       } catch (err) {
         alert("カメラの起動に失敗しました。ブラウザの権限を確認してください。");
       }
     }
 
-    // 撮影とGASへの送信
+    // 撮影とGASへの送信（トリミング機能付き）
     async function captureAndSend() {
       const video = document.getElementById('camera');
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
 
-      // 動画のサイズに合わせてCanvasを設定し、描画
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // ★追加：枠の割合（HTMLの w-[80%] h-[50%] と一致させる）
+      const cropWidthRatio = 0.8;
+      const cropHeightRatio = 0.5;
+
+      // ビデオの実際の解像度を取得
+      const vWidth = video.videoWidth;
+      const vHeight = video.videoHeight;
+
+      // 切り取るサイズと開始位置を計算
+      const cropWidth = vWidth * cropWidthRatio;
+      const cropHeight = vHeight * cropHeightRatio;
+      const startX = (vWidth - cropWidth) / 2;
+      const startY = (vHeight - cropHeight) / 2;
+
+      // Canvasのサイズを「切り取るサイズ」に設定
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+
+      // ★変更：ビデオの「枠の中」だけをCanvasに描画（切り取り）
+      ctx.drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
       // Base64画像を取得
       const imageSrc = canvas.toDataURL('image/jpeg', 0.8);
@@ -157,6 +176,11 @@
         </div>
         
         <video id="camera" autoplay playsinline class="w-full h-full object-cover"></video>
+        <div id="guide-frame" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none hidden">
+          <div class="w-[80%] h-[50%] border-4 border-red-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center">
+            <span class="text-white font-bold bg-red-500 px-3 py-1 rounded-full text-xs absolute -top-4">値札をここに合わせてください</span>
+          </div>
+        </div>
         <canvas id="canvas" class="hidden"></canvas>
       </div>
       
