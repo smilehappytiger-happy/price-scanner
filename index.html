@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>
     // ★ ここにGASのウェブアプリURLを貼り付けてください
-    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwk7xv4m464RQ6mIRoEvPnkmFLgX7JIY1Au57oVv2zb_jpFrWExYu1buzc37Um11oO0/exec";
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzyQpm2Nmb_qaozmFtYIYA-ZiYRlSatvSVotL2i41-Jog3gvxbQOZszb9Gi5YfO3P3NmQ/exec";
 
     let cart = [];
     let videoStream = null;
@@ -19,16 +19,13 @@
     function changeFrame(type, clickedBtn) {
       const frameBox = document.getElementById('frame-box');
       
-      // ボタンの色をリセット
       document.querySelectorAll('.frame-btn').forEach(btn => {
         btn.classList.replace('bg-indigo-600', 'bg-gray-200');
         btn.classList.replace('text-white', 'text-gray-700');
       });
-      // クリックされたボタンをアクティブに
       clickedBtn.classList.replace('bg-gray-200', 'bg-indigo-600');
       clickedBtn.classList.replace('text-gray-700', 'text-white');
 
-      // 枠の形を変更
       if (type === 'landscape') {
         frameBox.className = "w-[80%] h-[40%] border-4 border-red-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center transition-all duration-300";
         currentCropRatio = { w: 0.8, h: 0.4 };
@@ -55,7 +52,7 @@
         document.getElementById('guide-frame').classList.remove('hidden');
         document.getElementById('frame-controls').classList.remove('hidden');
       } catch (err) {
-        alert("カメラの起動に失敗しました。");
+        alert("カメラの起動に失敗しました。ブラウザの権限を確認してください。");
       }
     }
 
@@ -109,21 +106,37 @@
       document.getElementById('preview-area').classList.remove('hidden');
       
       document.getElementById('preview-image').src = imageSrc;
-      document.getElementById('preview-name').value = name; // 修正可能に
+      document.getElementById('preview-name').value = name; 
       document.getElementById('preview-price').value = price;
       
       originalScannedPrice = price; // 元値を保存
+      getDiscountInput().value = ''; // 割引入力をリセット
     }
 
-    // ★追加：割引の計算と適用
-    function applyDiscount(rate) {
-      let newPrice = originalScannedPrice;
-      if (rate === 0.5) {
-        newPrice = Math.floor(originalScannedPrice * 0.5); // 半額
-      } else if (rate > 0) {
-        newPrice = Math.floor(originalScannedPrice * (1 - rate)); // %OFF
-      }
-      document.getElementById('preview-price').value = newPrice;
+    // 割引アシスト機能群
+    const getDiscountInput = () => document.getElementById('discount-percent-input');
+
+    function resetDiscount() {
+      document.getElementById('preview-price').value = originalScannedPrice;
+      getDiscountInput().value = ''; 
+    }
+
+    function applyQuickDiscount(percent) {
+        getDiscountInput().value = percent;
+        applyCustomDiscount();
+    }
+
+    function applyCustomDiscount() {
+        const ratePercent = parseInt(getDiscountInput().value) || 0;
+        
+        if (ratePercent <= 0 || ratePercent >= 100) {
+            resetDiscount();
+            return;
+        }
+
+        const rate = ratePercent / 100;
+        let newPrice = Math.floor(originalScannedPrice * (1 - rate));
+        document.getElementById('preview-price').value = newPrice;
     }
 
     // プレビューのキャンセル
@@ -143,11 +156,13 @@
       cancelPreview();
     }
 
+    // カートから削除
     function removeFromCart(id) {
       cart = cart.filter(item => item.id !== id);
       updateCartUI();
     }
 
+    // 画面の更新（リストと合計金額）
     function updateCartUI() {
       const listEl = document.getElementById('cart-list');
       const totalEl = document.getElementById('total-price');
@@ -239,12 +254,31 @@
         <input id="preview-price" type="number" class="w-full text-3xl font-bold text-right border-b-2 border-indigo-500 bg-transparent focus:outline-none text-indigo-700" />
         
         <div class="mt-4 pt-3 border-t border-gray-200">
-          <p class="text-xs text-gray-500 mb-2 font-bold"><i class="fa-solid fa-tag"></i> 割引アシスト</p>
-          <div class="flex flex-wrap gap-2 justify-end">
-            <button onclick="applyDiscount(0)" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs font-bold shadow-sm">元に戻す</button>
-            <button onclick="applyDiscount(0.1)" class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold shadow-sm border border-red-200">10%引</button>
-            <button onclick="applyDiscount(0.2)" class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold shadow-sm border border-red-200">20%引</button>
-            <button onclick="applyDiscount(0.5)" class="px-2 py-1 bg-red-600 text-white rounded text-xs font-bold shadow-sm">半額</button>
+          <div class="flex justify-between items-center mb-3">
+            <p class="text-sm text-gray-500 font-bold"><i class="fa-solid fa-tag"></i> 割引アシスト</p>
+            <button onclick="resetDiscount()" class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold shadow-sm active:bg-gray-300 transition-colors flex items-center gap-1">
+              <i class="fa-solid fa-rotate-left"></i> 元値に戻す
+            </button>
+          </div>
+          
+          <div class="grid grid-cols-4 gap-2 mb-4">
+            <button onclick="applyQuickDiscount(10)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">10%</button>
+            <button onclick="applyQuickDiscount(20)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">20%</button>
+            <button onclick="applyQuickDiscount(30)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">30%</button>
+            <button onclick="applyQuickDiscount(40)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">40%</button>
+            <button onclick="applyQuickDiscount(50)" class="py-3 bg-red-500 text-white rounded-lg text-sm font-bold shadow-sm active:bg-red-600 transition-colors">半額</button>
+            <button onclick="applyQuickDiscount(60)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">60%</button>
+            <button onclick="applyQuickDiscount(70)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">70%</button>
+            <button onclick="applyQuickDiscount(80)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">80%</button>
+          </div>
+
+          <div class="flex items-center gap-2 pt-2 border-t border-gray-100">
+            <label for="discount-percent-input" class="text-xs text-gray-500 flex-none font-bold">手動で％を指定する：</label>
+            <div class="relative flex-1">
+                <input id="discount-percent-input" type="number" min="0" max="99" step="1" placeholder="0" class="w-full text-right font-bold text-gray-800 pr-8 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 text-sm bg-white" />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 font-bold">%引</span>
+            </div>
+            <button onclick="applyCustomDiscount()" class="flex-none py-2 px-4 bg-gray-800 text-white rounded-lg text-sm font-bold shadow-sm active:bg-gray-950 transition-colors">適用</button>
           </div>
         </div>
       </div>
