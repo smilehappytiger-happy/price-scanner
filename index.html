@@ -3,42 +3,71 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>値札レジゴー</title>
+  <title>値札レジゴー Premium</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* 1. 次の行動を促す光の鼓動アニメーション */
+    @keyframes pulse-glow {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.7); }
+      70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+    }
+    .animate-glow { animation: pulse-glow 2s infinite; }
+
+    /* 2. スキャンレーザーのアニメーション */
+    @keyframes scan {
+      0% { top: 0%; opacity: 0; }
+      50% { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+    .scan-line {
+      position: absolute;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(to right, transparent, #ef4444, transparent);
+      box-shadow: 0 0 15px #ef4444;
+      animation: scan 2s linear infinite;
+      z-index: 20;
+    }
+
+    /* 3. ボタンを押した時の「ポチッ」という凹み */
+    .btn-active:active { transform: scale(0.95); transition: 0.1s; }
+
+    /* 4. 背景のグラデーション */
+    body {
+      background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+    }
+  </style>
   <script>
     // ★ ここにGASのウェブアプリURLを貼り付けてください
     const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzyQpm2Nmb_qaozmFtYIYA-ZiYRlSatvSVotL2i41-Jog3gvxbQOZszb9Gi5YfO3P3NmQ/exec";
 
     let cart = [];
     let videoStream = null;
-    let currentCropRatio = { w: 0.8, h: 0.4 }; // 初期枠：横長
-    let originalScannedPrice = 0; // 割引計算用の元値保存
+    let currentCropRatio = { w: 0.8, h: 0.4 }; 
+    let originalScannedPrice = 0;
 
-    // 枠の切り替え機能
+    // 枠の切り替え
     function changeFrame(type, clickedBtn) {
       const frameBox = document.getElementById('frame-box');
-      
       document.querySelectorAll('.frame-btn').forEach(btn => {
-        btn.classList.replace('bg-indigo-600', 'bg-gray-200');
-        btn.classList.replace('text-white', 'text-gray-700');
+        btn.className = "frame-btn px-4 py-2 bg-white/50 text-gray-600 rounded-full text-xs font-bold border border-gray-200 transition-all btn-active";
       });
-      clickedBtn.classList.replace('bg-gray-200', 'bg-indigo-600');
-      clickedBtn.classList.replace('text-gray-700', 'text-white');
+      clickedBtn.className = "frame-btn px-4 py-2 bg-indigo-600 text-white rounded-full text-xs font-bold shadow-md transition-all btn-active";
 
       if (type === 'landscape') {
-        frameBox.className = "w-[80%] h-[40%] border-4 border-red-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center transition-all duration-300";
-        currentCropRatio = { w: 0.8, h: 0.4 };
+        frameBox.style.width = "85%"; frameBox.style.height = "40%";
+        currentCropRatio = { w: 0.85, h: 0.4 };
       } else if (type === 'square') {
-        frameBox.className = "w-[60%] aspect-square border-4 border-red-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center transition-all duration-300";
-        currentCropRatio = { w: 0.6, h: 0.6 };
+        frameBox.style.width = "70%"; frameBox.style.height = "70%";
+        currentCropRatio = { w: 0.7, h: 0.7 };
       } else if (type === 'portrait') {
-        frameBox.className = "w-[50%] h-[70%] border-4 border-red-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center transition-all duration-300";
-        currentCropRatio = { w: 0.5, h: 0.7 };
+        frameBox.style.width = "55%"; frameBox.style.height = "80%";
+        currentCropRatio = { w: 0.55, h: 0.8 };
       }
     }
 
-    // カメラの起動
     async function startCamera() {
       const video = document.getElementById('camera');
       try {
@@ -47,16 +76,15 @@
           audio: false
         });
         video.srcObject = videoStream;
-        document.getElementById('start-camera-btn').classList.add('hidden');
-        document.getElementById('capture-btn').classList.remove('hidden');
+        document.getElementById('start-camera-area').classList.add('hidden');
+        document.getElementById('capture-controls').classList.remove('hidden');
         document.getElementById('guide-frame').classList.remove('hidden');
-        document.getElementById('frame-controls').classList.remove('hidden');
+        document.getElementById('frame-selector').classList.remove('hidden');
       } catch (err) {
-        alert("カメラの起動に失敗しました。ブラウザの権限を確認してください。");
+        alert("カメラの起動に失敗しました。設定を確認してください。");
       }
     }
 
-    // 撮影とGASへの送信（トリミング処理付き）
     async function captureAndSend() {
       const video = document.getElementById('camera');
       const canvas = document.getElementById('canvas');
@@ -76,8 +104,7 @@
       const imageSrc = canvas.toDataURL('image/jpeg', 0.8);
       const base64Data = imageSrc.split(',')[1];
 
-      document.getElementById('loading').classList.remove('hidden');
-      document.getElementById('capture-btn').disabled = true;
+      document.getElementById('loading-overlay').classList.remove('hidden');
 
       try {
         const response = await fetch(GAS_WEB_APP_URL, {
@@ -86,226 +113,223 @@
           body: JSON.stringify({ image: base64Data })
         });
         const result = await response.json();
-
         if (result.success) {
           showPreview(result.name, result.price, imageSrc);
         } else {
-          alert("エラー: " + result.error);
+          alert("解析エラー: " + result.error);
         }
       } catch (error) {
-        alert("通信エラーが発生しました。");
+        alert("通信に失敗しました。");
       } finally {
-        document.getElementById('loading').classList.add('hidden');
-        document.getElementById('capture-btn').disabled = false;
+        document.getElementById('loading-overlay').classList.add('hidden');
       }
     }
 
-    // プレビュー画面の表示
     function showPreview(name, price, imageSrc) {
-      document.getElementById('camera-area').classList.add('hidden');
-      document.getElementById('preview-area').classList.remove('hidden');
+      document.getElementById('camera-section').classList.add('hidden');
+      document.getElementById('preview-section').classList.remove('hidden');
       
       document.getElementById('preview-image').src = imageSrc;
       document.getElementById('preview-name').value = name; 
       document.getElementById('preview-price').value = price;
-      
-      originalScannedPrice = price; // 元値を保存
-      getDiscountInput().value = ''; // 割引入力をリセット
-    }
-
-    // 割引アシスト機能群
-    const getDiscountInput = () => document.getElementById('discount-percent-input');
-
-    function resetDiscount() {
-      document.getElementById('preview-price').value = originalScannedPrice;
-      getDiscountInput().value = ''; 
+      originalScannedPrice = price;
+      document.getElementById('discount-percent-input').value = '';
     }
 
     function applyQuickDiscount(percent) {
-        getDiscountInput().value = percent;
+        document.getElementById('discount-percent-input').value = percent;
         applyCustomDiscount();
     }
 
     function applyCustomDiscount() {
-        const ratePercent = parseInt(getDiscountInput().value) || 0;
-        
+        const ratePercent = parseInt(document.getElementById('discount-percent-input').value) || 0;
         if (ratePercent <= 0 || ratePercent >= 100) {
-            resetDiscount();
+            document.getElementById('preview-price').value = originalScannedPrice;
             return;
         }
-
-        const rate = ratePercent / 100;
-        let newPrice = Math.floor(originalScannedPrice * (1 - rate));
+        const newPrice = Math.floor(originalScannedPrice * (1 - (ratePercent / 100)));
         document.getElementById('preview-price').value = newPrice;
     }
 
-    // プレビューのキャンセル
-    function cancelPreview() {
-      document.getElementById('preview-area').classList.add('hidden');
-      document.getElementById('camera-area').classList.remove('hidden');
+    function resetToOriginal() {
+      document.getElementById('preview-price').value = originalScannedPrice;
+      document.getElementById('discount-percent-input').value = '';
     }
 
-    // カートへ追加
+    function cancelPreview() {
+      document.getElementById('preview-section').classList.add('hidden');
+      document.getElementById('camera-section').classList.remove('hidden');
+    }
+
     function addToCart() {
       const name = document.getElementById('preview-name').value || "不明な商品";
       const price = parseInt(document.getElementById('preview-price').value) || 0;
-      const id = Date.now();
-
-      cart.push({ id, name, price });
+      cart.push({ id: Date.now(), name, price });
       updateCartUI();
       cancelPreview();
     }
 
-    // カートから削除
     function removeFromCart(id) {
       cart = cart.filter(item => item.id !== id);
       updateCartUI();
     }
 
-    // 画面の更新（リストと合計金額）
     function updateCartUI() {
       const listEl = document.getElementById('cart-list');
       const totalEl = document.getElementById('total-price');
       const countEl = document.getElementById('item-count');
-
       listEl.innerHTML = '';
       let total = 0;
-
       cart.forEach(item => {
         total += item.price;
         listEl.innerHTML += `
-          <li class="flex justify-between items-center p-2 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0">
-            <div class="truncate pr-4 flex-1">
-              <p class="text-sm font-bold text-gray-800 truncate">${item.name}</p>
+          <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-gray-100 animate-fade-in">
+            <div class="truncate flex-1"><p class="text-sm font-bold text-gray-700 truncate">${item.name}</p></div>
+            <div class="flex items-center gap-3">
+              <p class="font-bold text-gray-900">¥${item.price.toLocaleString()}</p>
+              <button onclick="removeFromCart(${item.id})" class="text-gray-300 hover:text-red-500 transition-colors"><i class="fa-solid fa-circle-xmark"></i></button>
             </div>
-            <div class="flex items-center gap-4">
-              <p class="font-bold text-lg whitespace-nowrap">¥${item.price.toLocaleString()}</p>
-              <button onclick="removeFromCart(${item.id})" class="text-red-400 hover:text-red-600 p-1">
-                <i class="fa-solid fa-trash"></i>
-              </button>
-            </div>
-          </li>
+          </div>
         `;
       });
-
-      if (cart.length === 0) {
-        listEl.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">まだ商品がありません</p>';
-      }
-
+      if (cart.length === 0) listEl.innerHTML = '<p class="text-gray-400 text-center py-6 text-sm">カートは空です</p>';
       totalEl.innerText = `¥${total.toLocaleString()}`;
-      countEl.innerText = `${cart.length} 点`;
+      countEl.innerText = `${cart.length}`;
+      
+      // 合計があるとき、精算ボタンを光らせる
+      const checkoutBtn = document.getElementById('checkout-btn');
+      if (cart.length > 0) checkoutBtn.classList.add('animate-glow', 'bg-indigo-600');
+      else checkoutBtn.classList.remove('animate-glow', 'bg-indigo-600');
     }
   </script>
 </head>
-<body class="bg-gray-100 font-sans min-h-screen flex flex-col pb-28">
+<body class="pb-32 text-gray-800">
 
-  <header class="bg-indigo-600 text-white p-4 shadow-md sticky top-0 z-10 flex justify-between items-center">
-    <h1 class="text-xl font-bold"><i class="fa-solid fa-cart-shopping mr-2"></i>値札レジゴー</h1>
-    <div class="bg-indigo-800 px-3 py-1 rounded-full text-sm font-bold" id="item-count">0 点</div>
+  <header class="bg-white/80 backdrop-blur-md p-4 sticky top-0 z-50 flex justify-between items-center border-b border-white/20 shadow-sm">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-indigo-200 shadow-lg">
+        <i class="fa-solid fa-barcode text-white text-xs"></i>
+      </div>
+      <h1 class="text-lg font-black tracking-tighter text-gray-800">値札レジゴー <span class="text-indigo-600">PRO</span></h1>
+    </div>
+    <div class="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full font-black text-xs">
+      <i class="fa-solid fa-cart-shopping"></i> <span id="item-count">0</span>
+    </div>
   </header>
 
-  <main class="flex-1 p-4 max-w-md mx-auto w-full flex flex-col gap-4">
+  <main class="p-4 max-w-md mx-auto space-y-4">
     
-    <div id="camera-area">
-      <div class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center border border-gray-200 relative">
-        <h2 class="text-md font-bold mb-2 text-gray-700">枠を値札に合わせてください</h2>
-        
-        <div class="w-full relative rounded-lg overflow-hidden bg-black aspect-[4/3] flex items-center justify-center">
-          <div id="loading" class="absolute inset-0 bg-black/60 z-20 flex flex-col items-center justify-center text-white hidden">
-            <i class="fa-solid fa-spinner fa-spin fa-3x mb-2"></i>
-            <p>AIが解析中...</p>
-          </div>
+    <section id="camera-section" class="space-y-4">
+      <div class="bg-white rounded-3xl shadow-xl overflow-hidden border border-white p-2">
+        <div class="relative aspect-[4/3] bg-gray-900 rounded-2xl overflow-hidden">
           
           <video id="camera" autoplay playsinline class="w-full h-full object-cover"></video>
           
-          <div id="guide-frame" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none hidden">
-            <div id="frame-box" class="w-[80%] h-[40%] border-4 border-red-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center transition-all duration-300">
-              <span class="text-white font-bold bg-red-500 px-3 py-1 rounded-full text-xs absolute -top-4">ここに合わせて撮影</span>
+          <div id="guide-frame" class="absolute inset-0 z-10 flex items-center justify-center hidden pointer-events-none">
+            <div id="frame-box" class="border-2 border-white/50 rounded-2xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.6)] transition-all duration-500 overflow-hidden">
+              <div class="scan-line"></div> <div class="absolute inset-0 border-2 border-indigo-400 animate-pulse rounded-2xl"></div>
             </div>
           </div>
-          <canvas id="canvas" class="hidden"></canvas>
-        </div>
 
-        <button id="start-camera-btn" onclick="startCamera()" class="mt-4 bg-gray-800 text-white px-6 py-3 rounded-full font-bold shadow">
-          カメラを起動する
-        </button>
+          <div id="loading-overlay" class="absolute inset-0 bg-black/70 z-50 flex flex-col items-center justify-center text-white hidden backdrop-blur-sm">
+            <div class="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p class="text-sm font-bold tracking-widest">ANALYZING...</p>
+          </div>
 
-        <button id="capture-btn" onclick="captureAndSend()" class="mt-4 bg-indigo-600 text-white p-4 rounded-full shadow-lg active:scale-95 transition-transform hidden">
-          <i class="fa-solid fa-camera fa-2x"></i>
-        </button>
-      </div>
-
-      <div id="frame-controls" class="mt-4 flex justify-center gap-3 hidden">
-        <button onclick="changeFrame('landscape', this)" class="frame-btn px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow transition-colors">横長</button>
-        <button onclick="changeFrame('square', this)" class="frame-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-bold shadow transition-colors">正方形</button>
-        <button onclick="changeFrame('portrait', this)" class="frame-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-bold shadow transition-colors">縦長</button>
-      </div>
-    </div>
-
-    <div id="preview-area" class="bg-white rounded-xl shadow-md p-6 border border-indigo-200 flex flex-col items-center hidden">
-      <h2 class="text-lg font-bold mb-4 text-indigo-700">この内容で追加しますか？</h2>
-      <img id="preview-image" class="w-32 h-auto rounded shadow-sm mb-4 opacity-80" />
-      
-      <div class="w-full bg-gray-50 p-4 rounded-lg mb-4 border">
-        <p class="text-sm text-gray-500 mb-1">商品名 (修正可能)</p>
-        <input id="preview-name" type="text" class="w-full font-bold text-gray-800 mb-4 bg-transparent border-b border-gray-300 focus:outline-none focus:border-indigo-500" />
-        
-        <p class="text-sm text-gray-500 mb-1">価格 (円)</p>
-        <input id="preview-price" type="number" class="w-full text-3xl font-bold text-right border-b-2 border-indigo-500 bg-transparent focus:outline-none text-indigo-700" />
-        
-        <div class="mt-4 pt-3 border-t border-gray-200">
-          <div class="flex justify-between items-center mb-3">
-            <p class="text-sm text-gray-500 font-bold"><i class="fa-solid fa-tag"></i> 割引アシスト</p>
-            <button onclick="resetDiscount()" class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold shadow-sm active:bg-gray-300 transition-colors flex items-center gap-1">
-              <i class="fa-solid fa-rotate-left"></i> 元値に戻す
+          <div id="start-camera-area" class="absolute inset-0 flex items-center justify-center z-20">
+            <button onclick="startCamera()" class="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-bold shadow-xl shadow-indigo-200 btn-active animate-glow">
+              カメラを起動する
             </button>
           </div>
-          
-          <div class="grid grid-cols-4 gap-2 mb-4">
-            <button onclick="applyQuickDiscount(10)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">10%</button>
-            <button onclick="applyQuickDiscount(20)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">20%</button>
-            <button onclick="applyQuickDiscount(30)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">30%</button>
-            <button onclick="applyQuickDiscount(40)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">40%</button>
-            <button onclick="applyQuickDiscount(50)" class="py-3 bg-red-500 text-white rounded-lg text-sm font-bold shadow-sm active:bg-red-600 transition-colors">半額</button>
-            <button onclick="applyQuickDiscount(60)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">60%</button>
-            <button onclick="applyQuickDiscount(70)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">70%</button>
-            <button onclick="applyQuickDiscount(80)" class="py-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold shadow-sm border border-red-200 active:bg-red-100 transition-colors">80%</button>
-          </div>
-
-          <div class="flex items-center gap-2 pt-2 border-t border-gray-100">
-            <label for="discount-percent-input" class="text-xs text-gray-500 flex-none font-bold">手動で％を指定する：</label>
-            <div class="relative flex-1">
-                <input id="discount-percent-input" type="number" min="0" max="99" step="1" placeholder="0" class="w-full text-right font-bold text-gray-800 pr-8 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 text-sm bg-white" />
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 font-bold">%引</span>
-            </div>
-            <button onclick="applyCustomDiscount()" class="flex-none py-2 px-4 bg-gray-800 text-white rounded-lg text-sm font-bold shadow-sm active:bg-gray-950 transition-colors">適用</button>
-          </div>
         </div>
       </div>
 
-      <div class="flex gap-4 w-full">
-        <button onclick="cancelPreview()" class="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-bold"><i class="fa-solid fa-xmark"></i> やめる</button>
-        <button onclick="addToCart()" class="flex-1 py-3 bg-indigo-600 text-white rounded-lg font-bold"><i class="fa-solid fa-plus"></i> カートへ</button>
+      <div id="frame-selector" class="flex justify-center gap-2 hidden">
+        <button onclick="changeFrame('landscape', this)" class="frame-btn px-4 py-2 bg-indigo-600 text-white rounded-full text-xs font-bold shadow-md btn-active">横長</button>
+        <button onclick="changeFrame('square', this)" class="frame-btn px-4 py-2 bg-white/50 text-gray-600 rounded-full text-xs font-bold border border-gray-200 btn-active">正方形</button>
+        <button onclick="changeFrame('portrait', this)" class="frame-btn px-4 py-2 bg-white/50 text-gray-600 rounded-full text-xs font-bold border border-gray-200 btn-active">縦長</button>
       </div>
-    </div>
 
-    <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-      <h2 class="font-bold text-gray-700 mb-3 border-b pb-2">買い物リスト</h2>
-      <ul id="cart-list" class="flex flex-col gap-2">
-        <p class="text-gray-400 text-center py-4 text-sm">まだ商品がありません</p>
-      </ul>
-    </div>
+      <div id="capture-controls" class="flex justify-center hidden">
+        <button onclick="captureAndSend()" class="w-20 h-20 bg-white rounded-full border-8 border-gray-100 shadow-2xl flex items-center justify-center btn-active animate-glow">
+          <div class="w-12 h-12 bg-indigo-600 rounded-full"></div>
+        </button>
+      </div>
+    </section>
+
+    <section id="preview-section" class="hidden animate-fade-in space-y-4">
+      <div class="bg-white rounded-3xl shadow-2xl p-6 border border-indigo-100 flex flex-col items-center">
+        <div class="w-full flex justify-between items-center mb-6">
+          <h2 class="text-lg font-black text-gray-800">スキャン結果</h2>
+          <button onclick="cancelPreview()" class="text-gray-400 p-2"><i class="fa-solid fa-xmark fa-lg"></i></button>
+        </div>
+
+        <div class="relative w-32 h-32 mb-6">
+            <img id="preview-image" class="w-full h-full object-cover rounded-2xl shadow-lg border-4 border-white" />
+            <div class="absolute -bottom-2 -right-2 bg-green-500 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+                <i class="fa-solid fa-check text-xs"></i>
+            </div>
+        </div>
+
+        <div class="w-full space-y-5">
+          <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+            <label class="text-[10px] font-black text-indigo-500 uppercase tracking-widest block mb-1">Product Name</label>
+            <input id="preview-name" type="text" class="w-full bg-transparent font-bold text-gray-800 focus:outline-none" />
+          </div>
+
+          <div class="bg-indigo-600 rounded-2xl p-5 text-white shadow-xl shadow-indigo-100 relative overflow-hidden">
+            <label class="text-[10px] font-black opacity-60 uppercase tracking-widest block mb-1">Final Price</label>
+            <div class="flex items-baseline justify-end gap-1">
+              <span class="text-sm font-bold opacity-80">¥</span>
+              <input id="preview-price" type="number" class="bg-transparent text-4xl font-black text-right w-full focus:outline-none" />
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Discount Assist</label>
+              <button onclick="resetToOriginal()" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">リセット</button>
+            </div>
+            <div class="grid grid-cols-4 gap-2">
+              <button onclick="applyQuickDiscount(10)" class="py-3 bg-white border border-gray-200 rounded-xl text-xs font-black hover:bg-indigo-50 btn-active">10%</button>
+              <button onclick="applyQuickDiscount(30)" class="py-3 bg-white border border-gray-200 rounded-xl text-xs font-black hover:bg-indigo-50 btn-active">30%</button>
+              <button onclick="applyQuickDiscount(50)" class="py-3 bg-red-500 text-white rounded-xl text-xs font-black shadow-md btn-active">半額</button>
+              <button onclick="applyQuickDiscount(80)" class="py-3 bg-white border border-gray-200 rounded-xl text-xs font-black hover:bg-indigo-50 btn-active">80%</button>
+            </div>
+            <div class="flex gap-2">
+                <input id="discount-percent-input" type="number" placeholder="その他%" class="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-indigo-500" />
+                <button onclick="applyCustomDiscount()" class="bg-gray-800 text-white px-6 py-3 rounded-xl text-sm font-bold btn-active">適用</button>
+            </div>
+          </div>
+        </div>
+
+        <button id="add-to-cart-btn" onclick="addToCart()" class="w-full mt-8 bg-indigo-600 text-white py-5 rounded-2xl font-black shadow-xl shadow-indigo-100 btn-active animate-glow">
+          <i class="fa-solid fa-plus mr-2"></i> カートに追加
+        </button>
+      </div>
+    </section>
+
+    <section class="space-y-3">
+      <h3 class="text-xs font-black text-gray-400 uppercase tracking-widest pl-2">Current List</h3>
+      <div id="cart-list" class="space-y-2 pb-10">
+        <p class="text-gray-400 text-center py-6 text-sm">カートは空です</p>
+      </div>
+    </section>
+
   </main>
 
-  <div class="fixed bottom-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-4 pb-6">
-    <div class="max-w-md mx-auto flex justify-between items-end">
+  <footer class="fixed bottom-0 left-0 right-0 p-4 pb-8 bg-white/80 backdrop-blur-xl border-t border-gray-100 z-50">
+    <div class="max-w-md mx-auto flex items-center justify-between">
       <div>
-        <p class="text-sm text-gray-500 font-bold">合計金額</p>
-        <p id="total-price" class="text-3xl font-black text-gray-900 leading-none mt-1">¥0</p>
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Amount</p>
+        <p id="total-price" class="text-3xl font-black text-gray-900 tracking-tighter">¥0</p>
       </div>
-      <button onclick="alert('お買い上げありがとうございました！')" class="bg-gray-800 text-white px-8 py-3 rounded-xl font-bold shadow-md">精算する</button>
+      <button id="checkout-btn" class="bg-gray-300 text-white px-10 py-4 rounded-2xl font-black text-sm shadow-lg btn-active transition-all">
+        精算する
+      </button>
     </div>
-  </div>
+  </footer>
 
+  <canvas id="canvas" class="hidden"></canvas>
 </body>
 </html>
